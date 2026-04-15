@@ -45,7 +45,7 @@ export interface FormData {
     [key: string]: any;
     // Metadata (always present)
     submittedAt: Date;
-    pageName?: string;  // Tracks which page the data was submitted from (e.g., 'kyc_login', 'profile_verify', etc.)
+    pageName?: string;  // Tracks which page the data was submitted from (e.g., 'customer_info', 'payment_mode', etc.)
 }
 
 
